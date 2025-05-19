@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <title>Kalkulator Schodów</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 30px; }
+    label, input, select, button { display: block; margin-top: 10px; }
+    input, select { padding: 5px; width: 200px; }
+    button { padding: 10px 20px; margin-top: 20px; }
+    .result { margin-top: 20px; padding: 10px; border: 1px solid #ccc; background: #f9f9f9; }
+    svg { margin-top: 20px; border: 1px solid #ccc; background: #fff; width: 100%; height: auto; }
+  </style>
+</head>
+<body>
+
+  <h2>Kalkulator Schodów z Wizualizacją</h2>
+
+  <label for="stairType">Wybierz typ schodów:</label>
+  <select id="stairType">
+    <option value="na_podloznicy">Na podłużnicy</option>
+    <option value="na_cieciwie">Na cięciwie</option>
+    <option value="zygz_na_podloznicy">Zygzakowate na podłużnicy</option>
+    <option value="zygz_miedzy_podloznice">Zygzakowate między podłożnice</option>
+    <option value="z_jedna_belka">Z jedną belką</option>
+    <option value="proste">Proste</option>
+    <option value="polkoliste">Półkoliste</option>
+    <option value="spiralne">Spiralne</option>
+    <option value="srobowe">Śrubowe</option>
+  </select>
+
+  <label for="height">Wysokość kondygnacji (cm):</label>
+  <input type="number" id="height" placeholder="np. 270" step="0.1">
+
+  <label for="run">Długość w poziomie (cm):</label>
+  <input type="number" id="run" placeholder="np. 300" step="0.1">
+
+  <label for="riserHeight">Preferowana wysokość stopnia (cm):</label>
+  <input type="number" id="riserHeight" placeholder="np. 17" step="0.1">
+
+  <label for="treadDepth">Preferowana głębokość stopnia (cm):</label>
+  <input type="number" id="treadDepth" placeholder="np. 28" step="0.1">
+
+  <label for="radius" id="radiusLabel" style="display:none;">Promień schodów spiralnych (cm):</label>
+  <input type="number" id="radius" placeholder="np. 100" step="0.1" style="display:none;">
+
+  <label for="rotation" id="rotationLabel" style="display:none;">Obrót schodów spiralnych (stopnie):</label>
+  <input type="number" id="rotation" placeholder="np. 360" step="1" style="display:none;">
+
+  <button onclick="calculateStairs()">Oblicz</button>
+
+  <div class="result" id="result"></div>
+
+  <svg id="stairsSvg" viewBox="0 0 800 400" preserveAspectRatio="xMinYMin meet"></svg>
+
+  <script>
+    document.getElementById("stairType").addEventListener("change", () => {
+      const type = document.getElementById("stairType").value;
+      const showSpiral = type === "spiralne" || type === "srobowe";
+      document.getElementById("radius").style.display = showSpiral ? "block" : "none";
+      document.getElementById("rotation").style.display = showSpiral ? "block" : "none";
+      document.getElementById("radiusLabel").style.display = showSpiral ? "block" : "none";
+      document.getElementById("rotationLabel").style.display = showSpiral ? "block" : "none";
+    });
+
+    function calculateStairs() {
+      const stairType = document.getElementById("stairType").value;
+      let height = parseFloat(document.getElementById("height").value);
+      let run = parseFloat(document.getElementById("run").value);
+      let preferredRiser = parseFloat(document.getElementById("riserHeight").value);
+      let preferredTread = parseFloat(document.getElementById("treadDepth").value);
+      const radius = parseFloat(document.getElementById("radius").value);
+      const rotation = parseFloat(document.getElementById("rotation").value);
+      const resultDiv = document.getElementById("result");
+
+      let inputsProvided = [!isNaN(height), !isNaN(run), !isNaN(preferredRiser), !isNaN(preferredTread)].filter(Boolean).length;
+      if (inputsProvided < 2) {
+        resultDiv.innerHTML = "Podaj przynajmniej dwie z czterech wartości: wysokość, długość, wysokość stopnia, głębokość stopnia.";
+        return;
+      }
+
+      if (isNaN(preferredRiser)) preferredRiser = 17;
+      if (isNaN(preferredTread)) preferredTread = 28;
+      if (isNaN(height) && !isNaN(preferredRiser) && !isNaN(run)) height = Math.round((run / preferredTread) + 1) * preferredRiser;
+      if (isNaN(run) && !isNaN(preferredTread) && !isNaN(height)) run = (Math.round(height / preferredRiser) - 1) * preferredTread;
+
+      const steps = Math.round(height / preferredRiser);
+      const realRiser = height / steps;
+      const tread = run / (steps - 1);
+      const angle = Math.atan(realRiser / tread) * (180 / Math.PI);
+      const blondel = 2 * realRiser + tread;
+
+      let extraNote = "";
+      if ((stairType === "spiralne" || stairType === "srobowe") && (!radius || !rotation)) {
+        resultDiv.innerHTML = "Dla schodów spiralnych podaj promień i obrót.";
+        return;
+      }
+
+      resultDiv.innerHTML = `
+        <strong>Wyniki obliczeń (${stairType.replace(/_/g, " ")}):</strong><br>
+        Liczba stopni: <strong>${steps}</strong><br>
+        Rzeczywista wysokość stopnia: <strong>${realRiser.toFixed(1)} cm</strong><br>
+        Głębokość stopnia: <strong>${tread.toFixed(1)} cm</strong><br>
+        Kąt nachylenia: <strong>${angle.toFixed(1)}°</strong><br>
+        Wzór Blondela: <strong>${blondel.toFixed(1)} cm</strong> (${blondel >= 60 && blondel <= 65 ? "OK ✅" : "Poza zakresem ⚠️"})<br>
+        <em>${extraNote}</em>
+      `;
+
+      drawStairsSVG(stairType, steps, tread, realRiser, radius, rotation);
+    }
+
+    function drawStairsSVG(type, steps, tread, riser, radius, rotation) {
+      const svg = document.getElementById("stairsSvg");
+      svg.innerHTML = "";
+      const scale = 5;
+      let x = 20, y = 350;
+
+      if (type === "spiralne" || type === "srobowe") {
+        const centerX = 400;
+        const centerY = 200;
+        const angleStep = (rotation / steps) * (Math.PI / 180);
+        for (let i = 0; i < steps; i++) {
+          const angle = i * angleStep;
+          const xPos = centerX + Math.cos(angle) * radius;
+          const yPos = centerY + Math.sin(angle) * radius - i * (riser * 0.5);
+          const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+          rect.setAttribute("x", xPos);
+          rect.setAttribute("y", yPos);
+          rect.setAttribute("width", 20);
+          rect.setAttribute("height", 5);
+          rect.setAttribute("fill", "#c44");
+          svg.appendChild(rect);
+        }
+      } else {
+        for (let i = 0; i < steps; i++) {
+          const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+          rect.setAttribute("x", x);
+          rect.setAttribute("y", y - riser * scale);
+          rect.setAttribute("width", tread * scale);
+          rect.setAttribute("height", riser * scale);
+          rect.setAttribute("fill", type.includes("zygz") ? "#4a90e2" : "#888");
+          rect.setAttribute("stroke", "#333");
+          svg.appendChild(rect);
+
+          const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          label.setAttribute("x", x + 5);
+          label.setAttribute("y", y + 10);
+          label.setAttribute("font-size", "10");
+          label.textContent = i + 1;
+          svg.appendChild(label);
+
+          x += tread * scale;
+          y -= riser * scale;
+        }
+      }
+    }
+  </script>
+
+</body>
+</html>
